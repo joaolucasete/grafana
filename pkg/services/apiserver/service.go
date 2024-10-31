@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/apiserver/auth/authenticator"
 	"github.com/grafana/grafana/pkg/services/apiserver/auth/authorizer"
 	"github.com/grafana/grafana/pkg/services/apiserver/builder"
+	"github.com/grafana/grafana/pkg/services/apiserver/builder/runner"
 	"github.com/grafana/grafana/pkg/services/apiserver/endpoints/request"
 	grafanaapiserveroptions "github.com/grafana/grafana/pkg/services/apiserver/options"
 	"github.com/grafana/grafana/pkg/services/apiserver/utils"
@@ -43,6 +44,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	genericoptions "k8s.io/apiserver/pkg/server/options"
 	clientrest "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
@@ -124,6 +126,7 @@ type service struct {
 	contextProvider datasource.PluginContextWrapper
 	pluginStore     pluginstore.Store
 	unified         resource.ResourceClient
+	runnerInit      runner.RunnerInitializer
 }
 
 func ProvideService(
@@ -140,6 +143,7 @@ func ProvideService(
 	contextProvider datasource.PluginContextWrapper,
 	pluginStore pluginstore.Store,
 	unified resource.ResourceClient,
+	runnerInit runner.RunnerInitializer,
 ) (*service, error) {
 	s := &service{
 		cfg:               cfg,
@@ -159,6 +163,8 @@ func ProvideService(
 		pluginStore:       pluginStore,
 		serverLockService: serverLockService,
 		unified:           unified,
+		runnerInit:        runnerInit,
+		restConfig:        &clientrest.Config{},
 	}
 	// This will be used when running as a dskit service
 	s.BasicService = services.NewBasicService(s.start, s.running, nil).WithName(modules.GrafanaAPIServer)
@@ -226,6 +232,15 @@ func (s *service) RegisterAPI(b builder.APIGroupBuilder) {
 func (s *service) start(ctx context.Context) error {
 	defer close(s.startedCh)
 
+	serverConfig := genericapiserver.NewRecommendedConfig(Codecs)
+	sso := genericoptions.NewSecureServingOptions().WithLoopback()
+	if err := setBindInfo(s.cfg, sso); err != nil {
+		return err
+	}
+	if err := sso.ApplyTo(&serverConfig.SecureServing, &s.restConfig); err != nil {
+		return err
+	}
+
 	// Get the list of groups the server will support
 	builders := s.builders
 
@@ -268,7 +283,6 @@ func (s *service) start(ctx context.Context) error {
 		}
 	}
 
-	serverConfig := genericapiserver.NewRecommendedConfig(Codecs)
 	if err := o.ApplyTo(serverConfig); err != nil {
 		return err
 	}

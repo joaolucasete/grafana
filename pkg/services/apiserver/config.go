@@ -6,27 +6,51 @@ import (
 	"path/filepath"
 	"strconv"
 
+	genericoptions "k8s.io/apiserver/pkg/server/options"
+
 	"github.com/grafana/grafana/pkg/services/apiserver/options"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
-func applyGrafanaConfig(cfg *setting.Cfg, features featuremgmt.FeatureToggles, o *options.Options) error {
-	defaultLogLevel := 0
+func getBindInfo(cfg *setting.Cfg) (net.IP, int, error) {
 	ip := net.ParseIP(cfg.HTTPAddr)
 	if ip == nil {
-		return fmt.Errorf("invalid IP address: %s", cfg.HTTPAddr)
+		return ip, 0, fmt.Errorf("invalid IP address: %s", cfg.HTTPAddr)
 	}
-	apiURL := cfg.AppURL
+
 	port, err := strconv.Atoi(cfg.HTTPPort)
 	if err != nil {
 		port = 3000
 	}
 
 	if cfg.Env == setting.Dev {
-		defaultLogLevel = 10
 		port = 6443
-		ip = net.ParseIP("0.0.0.0")
+	}
+
+	return ip, port, nil
+}
+
+func setBindInfo(cfg *setting.Cfg, o *genericoptions.SecureServingOptionsWithLoopback) error {
+	ip, port, err := getBindInfo(cfg)
+	if err != nil {
+		return err
+	}
+	o.BindAddress = ip
+	o.BindPort = port
+	return nil
+}
+
+func applyGrafanaConfig(cfg *setting.Cfg, features featuremgmt.FeatureToggles, o *options.Options) error {
+	defaultLogLevel := 0
+	ip, port, err := getBindInfo(cfg)
+	if err != nil {
+		return err
+	}
+	apiURL := cfg.AppURL
+
+	if cfg.Env == setting.Dev {
+		defaultLogLevel = 10
 		apiURL = fmt.Sprintf("https://%s:%d", ip, port)
 	}
 
@@ -36,8 +60,6 @@ func applyGrafanaConfig(cfg *setting.Cfg, features featuremgmt.FeatureToggles, o
 
 	o.RecommendedOptions.Etcd.StorageConfig.Transport.ServerList = apiserverCfg.Key("etcd_servers").Strings(",")
 
-	o.RecommendedOptions.SecureServing.BindAddress = ip
-	o.RecommendedOptions.SecureServing.BindPort = port
 	o.RecommendedOptions.Authentication.RemoteKubeConfigFileOptional = true
 	o.RecommendedOptions.Authorization.RemoteKubeConfigFileOptional = true
 

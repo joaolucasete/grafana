@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/grafana/pkg/infra/usagestats/statscollector"
 	"github.com/grafana/grafana/pkg/registry"
 	apiregistry "github.com/grafana/grafana/pkg/registry/apis"
+	appregistry "github.com/grafana/grafana/pkg/registry/apps"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
 	"github.com/grafana/grafana/pkg/services/anonymous/anonimpl"
 	grafanaapiserver "github.com/grafana/grafana/pkg/services/apiserver"
@@ -73,7 +74,7 @@ func ProvideBackgroundServiceRegistry(
 	_ *plugindashboardsservice.DashboardUpdater, _ *sanitizer.Provider,
 	_ *grpcserver.HealthService, _ authz.Client, _ *grpcserver.ReflectionService,
 	_ *ldapapi.Service, _ *apiregistry.Service, _ auth.IDService, _ *teamapi.TeamAPI, _ ssosettings.Service,
-	_ cloudmigration.Service, _ authnimpl.Registration,
+	_ cloudmigration.Service, _ authnimpl.Registration, _ *appregistry.Service,
 ) *BackgroundServiceRegistry {
 	return NewBackgroundServiceRegistry(
 		httpServer,
